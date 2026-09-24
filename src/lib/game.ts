@@ -19,7 +19,9 @@ export const PREVIEW_MS: Record<Speed, number> = {
   fast: 1400,
 };
 
-export const ANSWER_COUNT = 20;
+export const DEFAULT_ANSWER_COUNT = 20;
+export const MIN_ANSWER_COUNT = 20;
+export const MAX_ANSWER_COUNT = 50;
 export const MIN_N = 1;
 export const MAX_N = 20;
 

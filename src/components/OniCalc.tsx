@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ANSWER_COUNT,
+  DEFAULT_ANSWER_COUNT,
+  MAX_ANSWER_COUNT,
   MAX_N,
+  MIN_ANSWER_COUNT,
   MIN_N,
   PREVIEW_MS,
   SPEED_MS,
@@ -18,6 +20,7 @@ type Phase = "setup" | "preview" | "playing" | "result";
 
 type RoundResult = {
   n: number;
+  answerCount: number;
   speed: Speed;
   correct: number;
   total: number;
@@ -27,6 +30,7 @@ type RoundResult = {
 export default function OniCalc() {
   const [phase, setPhase] = useState<Phase>("setup");
   const [n, setN] = useState(2);
+  const [answerCount, setAnswerCount] = useState(DEFAULT_ANSWER_COUNT);
   const [speed, setSpeed] = useState<Speed>("normal");
   const [problems, setProblems] = useState<Problem[]>([]);
   const [index, setIndex] = useState(0);
@@ -39,6 +43,7 @@ export default function OniCalc() {
   const [roundId, setRoundId] = useState(0);
 
   const nRef = useRef(n);
+  const answerCountRef = useRef(answerCount);
   const speedRef = useRef(speed);
   const phaseRef = useRef(phase);
   const indexRef = useRef(index);
@@ -54,6 +59,9 @@ export default function OniCalc() {
   useEffect(() => {
     nRef.current = n;
   }, [n]);
+  useEffect(() => {
+    answerCountRef.current = answerCount;
+  }, [answerCount]);
   useEffect(() => {
     speedRef.current = speed;
   }, [speed]);
@@ -79,6 +87,17 @@ export default function OniCalc() {
     problemsRef.current = problems;
   }, [problems]);
 
+  const maxNForCount = Math.min(MAX_N, answerCount);
+
+  const clampAnswerCount = (v: number) =>
+    Math.min(MAX_ANSWER_COUNT, Math.max(MIN_ANSWER_COUNT, Math.floor(v)));
+
+  const applyAnswerCount = (next: number) => {
+    const clamped = clampAnswerCount(next);
+    setAnswerCount(clamped);
+    setN((prev) => Math.min(prev, Math.min(MAX_N, clamped)));
+  };
+
   const stopTimer = useCallback(() => {
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
@@ -91,6 +110,7 @@ export default function OniCalc() {
       stopTimer();
       setResult({
         n: nRef.current,
+        answerCount: answerCountRef.current,
         speed: speedRef.current,
         correct: finalCorrect,
         total: finalAnswered,
@@ -110,6 +130,7 @@ export default function OniCalc() {
       const currentPhase = phaseRef.current;
       const currentIndex = indexRef.current;
       const currentN = nRef.current;
+      const currentAnswerCount = answerCountRef.current;
       let nextCorrect = correctRef.current;
       let nextAnswered = answeredRef.current;
       let nextTimedOut = timedOutRef.current;
@@ -124,7 +145,7 @@ export default function OniCalc() {
       }
 
       const nextIndex = currentIndex + 1;
-      const endIndex = ANSWER_COUNT + currentN;
+      const endIndex = currentAnswerCount + currentN;
 
       if (nextIndex >= endIndex) {
         finish(nextCorrect, nextAnswered, nextTimedOut);
@@ -150,9 +171,10 @@ export default function OniCalc() {
   const startRound = useCallback(() => {
     stopTimer();
     advancingRef.current = false;
-    // Only ANSWER_COUNT problems are ever answered / need memorizing.
+    // Only answerCount problems are ever answered / need memorizing.
     // The final N answer steps show no new formula.
-    const list = generateProblems(ANSWER_COUNT);
+    const count = answerCountRef.current;
+    const list = generateProblems(count);
     setProblems(list);
     setIndex(0);
     setCorrect(0);
@@ -163,7 +185,7 @@ export default function OniCalc() {
     setResult(null);
     setPhase("preview");
     setRoundId((id) => id + 1);
-  }, [n, stopTimer]);
+  }, [stopTimer]);
 
   const submitAnswer = useCallback(
     (digit: number) => {
@@ -241,10 +263,10 @@ export default function OniCalc() {
 
   const current = problems[index];
   // Last N answer steps: formula is past the set — answer-only, nothing new to memorize.
-  const answerOnly = phase === "playing" && index >= ANSWER_COUNT;
+  const answerOnly = phase === "playing" && index >= answerCount;
   const progressDone =
-    phase === "preview" ? index : phase === "playing" ? answered : ANSWER_COUNT;
-  const progressTotal = phase === "preview" ? n : ANSWER_COUNT;
+    phase === "preview" ? index : phase === "playing" ? answered : answerCount;
+  const progressTotal = phase === "preview" ? n : answerCount;
 
   return (
     <div className="shell">
@@ -270,25 +292,64 @@ export default function OniCalc() {
                 className="n-input"
                 type="number"
                 min={MIN_N}
-                max={MAX_N}
+                max={maxNForCount}
                 value={n}
                 onChange={(e) => {
                   const v = Number(e.target.value);
                   if (Number.isNaN(v)) return;
-                  setN(Math.min(MAX_N, Math.max(MIN_N, Math.floor(v))));
+                  setN(
+                    Math.min(maxNForCount, Math.max(MIN_N, Math.floor(v))),
+                  );
                 }}
               />
               <button
                 type="button"
                 className="step"
-                onClick={() => setN((v) => Math.min(MAX_N, v + 1))}
+                onClick={() => setN((v) => Math.min(maxNForCount, v + 1))}
                 aria-label="バック数を増やす"
               >
                 ＋
               </button>
             </div>
             <span className="field-hint">
-              {n}問前の答えを入力します（{MIN_N}〜{MAX_N}）
+              {n}問前の答えを入力します（{MIN_N}〜{maxNForCount}）
+            </span>
+          </label>
+
+          <label className="field">
+            <span className="field-label">問題数</span>
+            <div className="n-row">
+              <button
+                type="button"
+                className="step"
+                onClick={() => applyAnswerCount(answerCount - 1)}
+                aria-label="問題数を減らす"
+              >
+                −
+              </button>
+              <input
+                className="n-input"
+                type="number"
+                min={MIN_ANSWER_COUNT}
+                max={MAX_ANSWER_COUNT}
+                value={answerCount}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (Number.isNaN(v)) return;
+                  applyAnswerCount(v);
+                }}
+              />
+              <button
+                type="button"
+                className="step"
+                onClick={() => applyAnswerCount(answerCount + 1)}
+                aria-label="問題数を増やす"
+              >
+                ＋
+              </button>
+            </div>
+            <span className="field-hint">
+              解答する問題数（{MIN_ANSWER_COUNT}〜{MAX_ANSWER_COUNT}）
             </span>
           </label>
 
@@ -315,7 +376,7 @@ export default function OniCalc() {
           <p className="rules">
             式を解いて答えを覚え、画面の式ではなく
             <strong>{n}問前</strong>
-            の答えをテンキーで入力してください。全{ANSWER_COUNT}
+            の答えをテンキーで入力してください。全{answerCount}
             問。データは保存しません。
           </p>
 
@@ -327,83 +388,87 @@ export default function OniCalc() {
 
       {(phase === "preview" || phase === "playing") &&
         (current || answerOnly) && (
-        <section
-          className={`panel play feedback-${feedback}`}
-          aria-live="polite"
-        >
-          <div className="meta">
-            <span>
-              {n}バック · {speed === "fast" ? "速い" : "ゆっくり"}
-            </span>
-            <span>
-              {phase === "preview"
-                ? `記憶 ${index + 1}/${n}`
-                : `解答 ${Math.min(answered + 1, ANSWER_COUNT)}/${ANSWER_COUNT}`}
-            </span>
-          </div>
-
-          <div className="timer-track" aria-hidden>
-            <div
-              className="timer-fill"
-              style={{ transform: `scaleX(${timeLeft})` }}
-            />
-          </div>
-
-          {phase === "preview" ? (
-            <p className="mode-chip">覚えるだけ（まだ答えない）</p>
-          ) : answerOnly ? (
-            <p className="mode-chip ask">残りは解答のみ（新規の式なし）</p>
-          ) : (
-            <p className="mode-chip ask">{n}問前の答えを入力</p>
-          )}
-
-          {answerOnly ? (
-            <div className="formula answer-only" key={`${phase}-${index}-${roundId}`}>
-              <span className="eq">{n}問前の答えは？</span>
+          <section
+            className={`panel play feedback-${feedback}`}
+            aria-live="polite"
+          >
+            <div className="meta">
+              <span>
+                {n}バック · {answerCount}問 ·{" "}
+                {speed === "fast" ? "速い" : "ゆっくり"}
+              </span>
+              <span>
+                {phase === "preview"
+                  ? `記憶 ${index + 1}/${n}`
+                  : `解答 ${Math.min(answered + 1, answerCount)}/${answerCount}`}
+              </span>
             </div>
-          ) : current ? (
-            <div className="formula" key={`${phase}-${index}-${roundId}`}>
-              <span className="eq">{formatProblem(current)}</span>
-              <span className="eq-tail">＝ ?</span>
-            </div>
-          ) : null}
 
-          {phase === "playing" ? (
-            <div className="pad" role="group" aria-label="数字キー">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
+            <div className="timer-track" aria-hidden>
+              <div
+                className="timer-fill"
+                style={{ transform: `scaleX(${timeLeft})` }}
+              />
+            </div>
+
+            {phase === "preview" ? (
+              <p className="mode-chip">覚えるだけ（まだ答えない）</p>
+            ) : answerOnly ? (
+              <p className="mode-chip ask">残りは解答のみ（新規の式なし）</p>
+            ) : (
+              <p className="mode-chip ask">{n}問前の答えを入力</p>
+            )}
+
+            {answerOnly ? (
+              <div
+                className="formula answer-only"
+                key={`${phase}-${index}-${roundId}`}
+              >
+                <span className="eq">{n}問前の答えは？</span>
+              </div>
+            ) : current ? (
+              <div className="formula" key={`${phase}-${index}-${roundId}`}>
+                <span className="eq">{formatProblem(current)}</span>
+                <span className="eq-tail">＝ ?</span>
+              </div>
+            ) : null}
+
+            {phase === "playing" ? (
+              <div className="pad" role="group" aria-label="数字キー">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className="pad-key"
+                    onClick={() => submitAnswer(d)}
+                    disabled={feedback !== "idle"}
+                  >
+                    {d}
+                  </button>
+                ))}
                 <button
-                  key={d}
                   type="button"
-                  className="pad-key"
-                  onClick={() => submitAnswer(d)}
+                  className="pad-key pad-zero"
+                  onClick={() => submitAnswer(0)}
                   disabled={feedback !== "idle"}
                 >
-                  {d}
+                  0
                 </button>
-              ))}
-              <button
-                type="button"
-                className="pad-key pad-zero"
-                onClick={() => submitAnswer(0)}
-                disabled={feedback !== "idle"}
-              >
-                0
-              </button>
-            </div>
-          ) : (
-            <p className="preview-note">式と答えを頭に入れてください</p>
-          )}
+              </div>
+            ) : (
+              <p className="preview-note">式と答えを頭に入れてください</p>
+            )}
 
-          <div className="progress" aria-hidden>
-            <div
-              className="progress-fill"
-              style={{
-                width: `${(progressDone / Math.max(1, progressTotal)) * 100}%`,
-              }}
-            />
-          </div>
-        </section>
-      )}
+            <div className="progress" aria-hidden>
+              <div
+                className="progress-fill"
+                style={{
+                  width: `${(progressDone / Math.max(1, progressTotal)) * 100}%`,
+                }}
+              />
+            </div>
+          </section>
+        )}
 
       {phase === "result" && result && (
         <section className="panel result" aria-label="結果">
@@ -416,7 +481,7 @@ export default function OniCalc() {
             <li>
               <span>モード</span>
               <strong>
-                {result.n}バック ·{" "}
+                {result.n}バック · {result.answerCount}問 ·{" "}
                 {result.speed === "fast" ? "速い" : "ゆっくり"}
               </strong>
             </li>
@@ -443,7 +508,7 @@ export default function OniCalc() {
                 setPhase("setup");
               }}
             >
-              バック数を変える
+              設定を変える
             </button>
           </div>
         </section>

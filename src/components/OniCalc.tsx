@@ -150,7 +150,9 @@ export default function OniCalc() {
   const startRound = useCallback(() => {
     stopTimer();
     advancingRef.current = false;
-    const list = generateProblems(ANSWER_COUNT + n);
+    // Only ANSWER_COUNT problems are ever answered / need memorizing.
+    // The final N answer steps show no new formula.
+    const list = generateProblems(ANSWER_COUNT);
     setProblems(list);
     setIndex(0);
     setCorrect(0);
@@ -238,6 +240,8 @@ export default function OniCalc() {
   }, [submitAnswer]);
 
   const current = problems[index];
+  // Last N answer steps: formula is past the set — answer-only, nothing new to memorize.
+  const answerOnly = phase === "playing" && index >= ANSWER_COUNT;
   const progressDone =
     phase === "preview" ? index : phase === "playing" ? answered : ANSWER_COUNT;
   const progressTotal = phase === "preview" ? n : ANSWER_COUNT;
@@ -321,7 +325,8 @@ export default function OniCalc() {
         </section>
       )}
 
-      {(phase === "preview" || phase === "playing") && current && (
+      {(phase === "preview" || phase === "playing") &&
+        (current || answerOnly) && (
         <section
           className={`panel play feedback-${feedback}`}
           aria-live="polite"
@@ -346,14 +351,22 @@ export default function OniCalc() {
 
           {phase === "preview" ? (
             <p className="mode-chip">覚えるだけ（まだ答えない）</p>
+          ) : answerOnly ? (
+            <p className="mode-chip ask">残りは解答のみ（新規の式なし）</p>
           ) : (
             <p className="mode-chip ask">{n}問前の答えを入力</p>
           )}
 
-          <div className="formula" key={`${phase}-${index}-${roundId}`}>
-            <span className="eq">{formatProblem(current)}</span>
-            <span className="eq-tail">＝ ?</span>
-          </div>
+          {answerOnly ? (
+            <div className="formula answer-only" key={`${phase}-${index}-${roundId}`}>
+              <span className="eq">{n}問前の答えは？</span>
+            </div>
+          ) : current ? (
+            <div className="formula" key={`${phase}-${index}-${roundId}`}>
+              <span className="eq">{formatProblem(current)}</span>
+              <span className="eq-tail">＝ ?</span>
+            </div>
+          ) : null}
 
           {phase === "playing" ? (
             <div className="pad" role="group" aria-label="数字キー">
